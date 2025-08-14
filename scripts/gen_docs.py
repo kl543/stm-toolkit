@@ -8,20 +8,23 @@ import html
 from datetime import datetime
 from urllib.parse import quote
 
-REPO = os.environ.get("GITHUB_REPOSITORY", "kl543/stm-toolkit")
+# --- Repo / branch (可由 Actions 传入环境变量覆盖) ---
+REPO   = os.environ.get("GITHUB_REPOSITORY", "kl543/stm-toolkit")
 BRANCH = os.environ.get("DOCS_BRANCH", "main")
 
-ROOT = Path(__file__).resolve().parents[1]
-NB_DIR = ROOT / "notebooks"
+# --- Paths ---
+ROOT        = Path(__file__).resolve().parents[1]
+NB_DIR      = ROOT / "notebooks"
 SRC_IMG_DIR = ROOT / "assets" / "img"
-DOCS_DIR = ROOT / "docs"
-DOCS_IMG_DIR = DOCS_DIR / "img"
+DOCS_DIR    = ROOT / "docs"
+DOCS_IMG    = DOCS_DIR / "img"
 
 DOCS_DIR.mkdir(parents=True, exist_ok=True)
-DOCS_IMG_DIR.mkdir(parents=True, exist_ok=True)
+DOCS_IMG.mkdir(parents=True, exist_ok=True)
 
+# --- Helpers ---
 def url_nbviewer(rel_posix: str) -> str:
-    # 对路径做 URL 编码（空格 -> %20）
+    # URL 编码（空格 -> %20 等）
     return f"https://nbviewer.org/github/{REPO}/blob/{BRANCH}/{quote(rel_posix)}"
 
 def url_raw(rel_posix: str) -> str:
@@ -45,9 +48,8 @@ def gather_images(max_count=6):
     imgs = []
     if not SRC_IMG_DIR.exists():
         return imgs
-    cand = sorted(SRC_IMG_DIR.glob("*.*"))
-    for p in cand[:max_count]:
-        dst = DOCS_IMG_DIR / p.name
+    for p in sorted(SRC_IMG_DIR.glob("*.*"))[:max_count]:
+        dst = DOCS_IMG / p.name
         shutil.copy2(p, dst)
         imgs.append({
             "src": f"img/{p.name}",
@@ -71,6 +73,11 @@ def render_html(nbs, imgs):
     img{width:100%;height:auto;border-radius:12px;border:1px solid var(--line)}
     figcaption{font-size:12px;color:#666;margin-top:6px}
     footer{color:#666;font-size:12px;text-align:center;margin:24px 0}
+    /* nav */
+    .topnav{display:flex;gap:14px;justify-content:center;margin-top:8px}
+    .topnav a{color:#fff;text-decoration:none;opacity:.9}
+    .topnav a:hover{opacity:1;text-decoration:underline}
+    .back{margin-bottom:8px}
     """
 
     nb_html = "".join(
@@ -97,19 +104,36 @@ def render_html(nbs, imgs):
 <style>{css}</style>
 </head>
 <body>
-<header><h1>STM Data Toolkit</h1><p class="muted">Minimal notebooks + selected figures</p></header>
+<header>
+  <h1>STM Data Toolkit</h1>
+  <p class="muted">Minimal notebooks + selected figures</p>
+  <nav class="topnav">
+    <a href="https://kl543.github.io/">Home</a>
+    <a href="https://kl543.github.io/projects.html">Projects</a>
+    <a href="https://github.com/kl543/stm-toolkit" target="_blank" rel="noopener">Repository</a>
+  </nav>
+</header>
 <main>
-<section class="card"><h2>Notebooks</h2>{nb_html}</section>
-<section class="card"><h2>Selected Figures</h2><div class="grid">{img_html}</div></section>
+  <p><a class="btn back" href="https://kl543.github.io/projects.html">← Back to Projects</a></p>
+
+  <section class="card">
+    <h2>Notebooks</h2>
+    {nb_html}
+  </section>
+
+  <section class="card">
+    <h2>Selected Figures</h2>
+    <div class="grid">{img_html}</div>
+  </section>
 </main>
 <footer>Generated {now} · Source: https://github.com/{REPO}</footer>
 </body></html>"""
 
 def main():
-    nbs = gather_notebooks()
+    nbs  = gather_notebooks()
     imgs = gather_images(max_count=6)
-    html_out = render_html(nbs, imgs)
-    (DOCS_DIR / "index.html").write_text(html_out, encoding="utf-8")
+    out  = render_html(nbs, imgs)
+    (DOCS_DIR / "index.html").write_text(out, encoding="utf-8")
     (DOCS_DIR / ".nojekyll").write_text("", encoding="utf-8")
     print(f"Wrote docs/index.html · notebooks={len(nbs)} imgs={len(imgs)}")
 
