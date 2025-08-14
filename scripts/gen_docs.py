@@ -1,141 +1,153 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from pathlib import Path
+"""
+Generate a simple docs page for STM Toolkit:
+- Lists notebooks in /notebooks with "View (nbviewer)" and "Download (.ipynb)".
+- Shows selected figures from assets/img as a responsive grid.
+- Uses a shared site header if _site-header.html exists in repo root or parent.
+- Falls back to a minimal inline header with links to your main site.
+"""
+
 import os
-import shutil
-import html
 from datetime import datetime
 from urllib.parse import quote
 
-# --- Repo / branch (可由 Actions 传入环境变量覆盖) ---
-REPO   = os.environ.get("GITHUB_REPOSITORY", "kl543/stm-toolkit")
-BRANCH = os.environ.get("DOCS_BRANCH", "main")
+# ---- repo-specific config (change repo_name if你改了仓库名) ----
+OWNER     = "kl543"
+REPO_NAME = "stm-toolkit"
+BRANCH    = "main"
 
-# --- Paths ---
-ROOT        = Path(__file__).resolve().parents[1]
-NB_DIR      = ROOT / "notebooks"
-SRC_IMG_DIR = ROOT / "assets" / "img"
-DOCS_DIR    = ROOT / "docs"
-DOCS_IMG    = DOCS_DIR / "img"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repo root
+NB_DIR = os.path.join(ROOT, "notebooks")
+IMG_DIR = os.path.join(ROOT, "assets", "img")
+OUT_HTML = os.path.join(ROOT, "index.html")
 
-DOCS_DIR.mkdir(parents=True, exist_ok=True)
-DOCS_IMG.mkdir(parents=True, exist_ok=True)
+MAIN_SITE = "https://kl543.github.io"
+PROJECTS_URL = f"{MAIN_SITE}/projects.html"
 
-# --- Helpers ---
-def url_nbviewer(rel_posix: str) -> str:
-    # URL 编码（空格 -> %20 等）
-    return f"https://nbviewer.org/github/{REPO}/blob/{BRANCH}/{quote(rel_posix)}"
-
-def url_raw(rel_posix: str) -> str:
-    return f"https://raw.githubusercontent.com/{REPO}/{BRANCH}/{quote(rel_posix)}"
-
-def gather_notebooks():
-    if not NB_DIR.exists():
-        return []
-    out = []
-    for p in sorted(NB_DIR.glob("*.ipynb")):
-        rel = p.relative_to(ROOT).as_posix()
-        title = p.stem.replace("-", " ").replace("_", " ")
-        out.append({
-            "title": title,
-            "nbviewer": url_nbviewer(rel),
-            "raw": url_raw(rel),
-        })
-    return out
-
-def gather_images(max_count=6):
-    imgs = []
-    if not SRC_IMG_DIR.exists():
-        return imgs
-    for p in sorted(SRC_IMG_DIR.glob("*.*"))[:max_count]:
-        dst = DOCS_IMG / p.name
-        shutil.copy2(p, dst)
-        imgs.append({
-            "src": f"img/{p.name}",
-            "alt": p.stem.replace("-", " "),
-            "caption": p.stem.replace("-", " "),
-        })
-    return imgs
-
-def render_html(nbs, imgs):
-    css = """
-    :root{--line:#e9e9e9;--muted:#666;--ink:#111}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:var(--ink);line-height:1.6}
-    header{background:#111;color:#fff;padding:28px 16px;text-align:center}
-    main{max-width:1040px;margin:24px auto;padding:0 16px}
-    .muted{color:#666}
-    .card{border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin:16px 0;background:#fff}
-    .btn{display:inline-block;border:1px solid var(--line);padding:8px 12px;border-radius:10px;text-decoration:none;margin-right:8px}
-    .btn:hover{background:#f6f6f6}
-    .grid{display:grid;gap:14px}
-    @media(min-width:900px){.grid{grid-template-columns:repeat(3,1fr)}}
-    img{width:100%;height:auto;border-radius:12px;border:1px solid var(--line)}
-    figcaption{font-size:12px;color:#666;margin-top:6px}
-    footer{color:#666;font-size:12px;text-align:center;margin:24px 0}
-    /* nav */
-    .topnav{display:flex;gap:14px;justify-content:center;margin-top:8px}
-    .topnav a{color:#fff;text-decoration:none;opacity:.9}
-    .topnav a:hover{opacity:1;text-decoration:underline}
-    .back{margin-bottom:8px}
+def load_site_header():
     """
-
-    nb_html = "".join(
-        f"""<p><b>{html.escape(nb['title'])}</b><br>
-        <a class="btn" href="{nb['nbviewer']}" target="_blank" rel="noopener">View (nbviewer)</a>
-        <a class="btn" href="{nb['raw']}" target="_blank" rel="noopener">Download (.ipynb)</a></p>"""
-        for nb in nbs
-    ) or '<p class="muted">No notebooks found.</p>'
-
-    img_html = "".join(
-        f"""<figure><img src="{html.escape(im['src'])}" alt="{html.escape(im['alt'])}" loading="lazy">
-        <figcaption>{html.escape(im['caption'])}</figcaption></figure>"""
-        for im in imgs
-    ) or '<p class="muted">No figures found.</p>'
-
-    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-
+    优先读取仓库根或上层目录的 _site-header.html；
+    若不存在，返回内置兜底页眉（含五个导航）。
+    """
+    candidates = [
+        os.path.join(ROOT, "_site-header.html"),
+        os.path.join(os.path.dirname(ROOT), "_site-header.html"),
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            with open(p, "r", encoding="utf-8") as f:
+                return f.read()
+    # fallback header（与主站风格保持一致）
     return f"""<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>STM Data Toolkit</title>
-<link rel="stylesheet" href="https://unpkg.com/mvp.css">
-<style>{css}</style>
+<html lang="en"><head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>STM Data Toolkit — Kaiming Liu</title>
+<style>
+:root{{--line:#e9e9e9;--muted:#666;--ink:#111;--bg:#0f0f10}}
+body{{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:var(--ink);line-height:1.6}}
+header{{background:#111;color:#fff;padding:30px 16px;text-align:center}}
+nav{{display:flex;gap:14px;justify-content:center;margin:10px 0 0}}
+nav a{{color:#fff;text-decoration:none;opacity:.9}} nav a:hover{{opacity:1}}
+.container{{max-width:1040px;margin:24px auto;padding:0 16px}}
+.muted{{color:var(--muted)}}
+.card{{border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin:16px 0;background:#fff}}
+h1,h2,h3{{margin:.2rem 0 .6rem}}
+.btn{{display:inline-block;border:1px solid var(--line);padding:8px 12px;border-radius:10px;text-decoration:none;margin-right:8px;color:#111}}
+.btn:hover{{background:#f6f6f6}}
+.grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}}
+.thumb{{border:1px solid var(--line);border-radius:12px;padding:6px;background:#fff}}
+.thumb img{{width:100%;height:auto;display:block;border-radius:8px}}
+.center{{text-align:center}}
+.backline{{margin:6px 0 0;}}
+</style>
 </head>
 <body>
 <header>
   <h1>STM Data Toolkit</h1>
-  <p class="muted">Minimal notebooks + selected figures</p>
-  <nav class="topnav">
-    <a href="https://kl543.github.io/">Home</a>
-    <a href="https://kl543.github.io/projects.html">Projects</a>
-    <a href="https://github.com/kl543/stm-toolkit" target="_blank" rel="noopener">Repository</a>
+  <div class="muted">Minimal notebooks + selected figures</div>
+  <div class="backline"><a href="{PROJECTS_URL}" style="color:#fff;text-decoration:underline;">Back to Projects</a></div>
+  <nav>
+    <a href="{MAIN_SITE}/index.html">About</a>
+    <a href="{MAIN_SITE}/interests.html">Interests</a>
+    <a href="{MAIN_SITE}/projects.html"><b>Projects</b></a>
+    <a href="{MAIN_SITE}/coursework.html">Coursework</a>
+    <a href="{MAIN_SITE}/contact.html">Contact</a>
   </nav>
 </header>
-<main>
-  <p><a class="btn back" href="https://kl543.github.io/projects.html">← Back to Projects</a></p>
+"""
 
-  <section class="card">
-    <h2>Notebooks</h2>
-    {nb_html}
-  </section>
+def list_notebooks():
+    os.makedirs(NB_DIR, exist_ok=True)
+    files = [f for f in os.listdir(NB_DIR) if f.lower().endswith(".ipynb")]
+    files.sort()
+    items = []
+    for nb in files:
+        # nbviewer 和 raw 下载链接
+        path = f"notebooks/{quote(nb)}"
+        nbviewer = f"https://nbviewer.org/github/{OWNER}/{REPO_NAME}/blob/{BRANCH}/{path}"
+        download = f"https://raw.githubusercontent.com/{OWNER}/{REPO_NAME}/{BRANCH}/{path}"
+        items.append((nb, nbviewer, download))
+    return items
 
-  <section class="card">
-    <h2>Selected Figures</h2>
-    <div class="grid">{img_html}</div>
-  </section>
-</main>
-<footer>Generated {now} · Source: https://github.com/{REPO}</footer>
-</body></html>"""
+def list_images():
+    imgs = []
+    if os.path.isdir(IMG_DIR):
+        for f in os.listdir(IMG_DIR):
+            if f.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".gif")):
+                imgs.append(f"assets/img/{f}")
+    imgs.sort()
+    return imgs
+
+def build_html():
+    header = load_site_header()
+
+    nb_items = list_notebooks()
+    img_items = list_images()
+    now_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+
+    html = [header, '<main class="container">']
+
+    # Notebooks
+    html.append('<section class="card">')
+    html.append('<h2>Notebooks</h2>')
+    if nb_items:
+        for name, view_url, dl_url in nb_items:
+            label = os.path.splitext(name)[0].replace("-", " ")
+            html.append('<div style="margin:10px 0;">')
+            html.append(f'<b>{label}</b><br/>')
+            html.append(f'<a class="btn" href="{view_url}">View (nbviewer)</a>')
+            html.append(f'<a class="btn" href="{dl_url}">Download (.ipynb)</a>')
+            html.append('</div>')
+    else:
+        html.append('<div class="muted">No notebooks yet.</div>')
+    html.append('</section>')
+
+    # Figures
+    html.append('<section class="card">')
+    html.append('<h2>Selected Figures</h2>')
+    if img_items:
+        html.append('<div class="grid">')
+        for rel in img_items:
+            html.append('<div class="thumb">')
+            html.append(f'<img src="{rel}" alt="figure" loading="lazy" />')
+            html.append('</div>')
+        html.append('</div>')
+    else:
+        html.append('<div class="muted">No figures yet.</div>')
+    html.append('</section>')
+
+    html.append(f'<div class="center muted" style="margin:24px 0;">Last updated: {now_str}</div>')
+    html.append('</main></body></html>')
+    return "\n".join(html)
 
 def main():
-    nbs  = gather_notebooks()
-    imgs = gather_images(max_count=6)
-    out  = render_html(nbs, imgs)
-    (DOCS_DIR / "index.html").write_text(out, encoding="utf-8")
-    (DOCS_DIR / ".nojekyll").write_text("", encoding="utf-8")
-    print(f"Wrote docs/index.html · notebooks={len(nbs)} imgs={len(imgs)}")
+    html = build_html()
+    with open(OUT_HTML, "w", encoding="utf-8") as f:
+        f.write(html)
+    print(f"[stm-toolkit] Wrote {OUT_HTML}")
 
 if __name__ == "__main__":
     main()
