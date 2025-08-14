@@ -27,7 +27,15 @@ jobs:
           python-version: "3.11"
 
       - name: Generate docs
-        run: python scripts/gen_docs.py
+        env:
+          GITHUB_REPOSITORY: kl543/stm-toolkit
+          DOCS_BRANCH: main
+        run: |
+          python --version
+          python scripts/gen_docs.py
+
+      - name: List docs
+        run: ls -lah docs && ls -lah docs/img || true
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
